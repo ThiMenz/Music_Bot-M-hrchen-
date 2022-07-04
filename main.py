@@ -15,7 +15,7 @@ from discord.ext.commands import CommandNotFound
 
 # Silence useless bug reports messages
 youtube_dl.utils.bug_reports_message = lambda: ''
-#locale.setlocale(locale.LC_ALL, 'de_DE')
+
 global currentVolume
 currentVolume = 0.5
 
@@ -24,10 +24,8 @@ allowedCommandChannel = "bot-commands"
 class VoiceError(Exception):
     pass
 
-
 class YTDLError(Exception):
     pass
-
 
 class YTDLSource(discord.PCMVolumeTransformer):
     YTDL_OPTIONS = {
@@ -117,6 +115,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 except IndexError:
                     raise YTDLError('Couldn\'t retrieve any matches for <{}>'.format(webpage_url))
 
+      
         return cls(ctx, discord.FFmpegPCMAudio(info['url'], **cls.FFMPEG_OPTIONS), data=info)
 
     @staticmethod
@@ -147,9 +146,10 @@ class Song:
     
     def create_embed(self):
         tagString = ""
-        if len(self.source.tags) < 5: 
-            for tag in self.source.tags: tagString = tagString + "#" + tag + "   "
-        else: tagString = "〈#" + self.source.tags[0] + "〉  〈#" + self.source.tags[1] + "〉  〈#" + self.source.tags[2] + "〉  〈#" + self.source.tags[3] + "〉  〈#" + self.source.tags[4] + "〉"
+        if self.source.tags:
+            if len(self.source.tags) < 5: 
+                for tag in self.source.tags: tagString = tagString + "#" + tag + "   "
+            else: tagString = "〈#" + self.source.tags[0] + "〉  〈#" + self.source.tags[1] + "〉  〈#" + self.source.tags[2] + "〉  〈#" + self.source.tags[3] + "〉  〈#" + self.source.tags[4] + "〉"
         
         embed = (discord.Embed(title='➙ {}'.format(self.source.title),
                                description='{}'.format(tagString),
@@ -246,7 +246,7 @@ class VoiceState:
         activereplay = False
         while True:
             self.next.clear()
-            if not self.loop:
+            if not self.loop and not activereplay:
                 try:
                     async with timeout(30):  # 30 seconds
                         self.current = await self.songs.get()
@@ -254,17 +254,25 @@ class VoiceState:
                 except asyncio.TimeoutError:
                     self.bot.loop.create_task(self.stop())
                     return
+            elif self.loop and not activereplay:
+                theSource = await YTDLSource.create_source(self._ctx, search=str(self.current.source.url), loop=False)
+                theSourceSong = Song(theSource)
+                self.current = await self.songs.get()
+                activereplay = True
             else:
                 theSource = await YTDLSource.create_source(self._ctx, search=str(self.current.source.url), loop=False)
                 theSourceSong = Song(theSource)
-                await self.songs.put(theSourceSong)
-                self.current = await self.songs.get()
+                self.current = theSourceSong
+
+                temptitle = '✅   Song replay startet'
+                embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
+                await self._ctx.send(content="<@" + str(self._ctx.message.author.id) + ">", embed=embed)
+              
             self.current.source.volume = self._volume
             self.voice.play(self.current.source, after=self.play_next_song)
             self.voice.source.volume = currentVolume
             if activereplay: activereplay = False
             else: await self.current.source.channel.send(embed=self.current.create_embed())
-            
             await self.next.wait()
 
     def play_next_song(self, error=None):
@@ -288,14 +296,20 @@ class VoiceState:
 
     async def replay(self):
       if self.is_playing:
-        self.voice.stop()
-        theSource = await YTDLSource.create_source(self._ctx, search=str(self.current.source.url), loop=False)
-        theSourceSong = Song(theSource)
-        await self.songs.put(theSourceSong)
         global activereplay
         activereplay = True
+        self.voice.stop()
       
 class Music(commands.Cog):
+
+
+
+                              #==================================
+                              #- - - - -{ COG & Voice }- - - - -
+                              #==================================
+
+
+  
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.voice_states = {}
@@ -324,6 +338,17 @@ class Music(commands.Cog):
     async def cog_command_error(self, ctx: commands.Context, error: commands.CommandError):
         await self.create_error_embed(ctx, str(error))
 
+
+
+
+                              #==================================
+                              #- - - - -{ All Commands }- - - - -
+                              #==================================
+
+
+      
+    #- - -{ Join }- - -
+      
     @commands.command(name='join', invoke_without_subcommand=True, aliases=['j'])
     async def _join(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
@@ -331,14 +356,8 @@ class Music(commands.Cog):
 
         if ctx.author.voice == None: return await self.create_error_embed(ctx, "You have to be in a voicechannel.") 
           
-        #if ctx.voice_state.voice == None: return await self.create_error_embed(ctx, "The bot is currently not in a voicechannel.")
-          
-        #if ctx.author.voice.channel != ctx.voice_state.voice.channel: return await self.create_error_embed(ctx, "The bot is currently not in your voicechannel.")
-      
         if ctx.author.voice.channel.user_limit == len(ctx.author.voice.channel.members): await ctx.author.voice.channel.edit(user_limit = ctx.author.voice.channel.user_limit + 1)
-          
-        #if destination == None: return await self.create_error_embed(ctx, "You have to be connected to a voice channel.")
-          
+
         if ctx.voice_state.voice:
             await ctx.voice_state.voice.move_to(destination)
             return
@@ -346,27 +365,14 @@ class Music(commands.Cog):
         ctx.voice_state.voice = await destination.connect()
       
         temptitle = '✅   Joined:  ```{}```'.format(str(destination.name))
-        embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
-    @commands.command(name='summon')
-    @commands.has_permissions(manage_guild=True)
-    async def _summon(self, ctx: commands.Context, *, channel: discord.VoiceChannel = None):
-        if allowedCommandChannel not in ctx.channel.name: return
-        return
-        if not channel and not ctx.author.voice:
-            return await self.create_error_embed(ctx, "You are neither connected to a voice channel nor specified a channel to join.")
 
-        destination = channel
-        if destination == None: destination = ctx.author.voice.channel
-        if ctx.voice_state.voice:
-            await ctx.voice_state.voice.move_to(destination)
-            return
-
-        ctx.voice_state.voice = await destination.connect()
-
+      
+    #- - -{ Leave }- - -
+      
     @commands.command(name='leave', aliases=['l'])
-    @commands.has_permissions(manage_guild=True)
     async def _leave(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
         
@@ -378,9 +384,13 @@ class Music(commands.Cog):
         del self.voice_states[ctx.guild.id]
 
         temptitle = '✅   Leaved:  ```{}```'.format(str(ctx.message.author.voice.channel.name))
-        embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
-          
+
+
+      
+    #- - -{ Volume }- - -
+      
     @commands.command(name='volume', aliases=['v'])
     async def _volume(self, ctx: commands.Context, *, volume):
         if allowedCommandChannel not in ctx.channel.name: return
@@ -399,17 +409,24 @@ class Music(commands.Cog):
         currentVolume = int(volume) / 100
       
         temptitle = '✅   Volume set to:  ```{}%```'.format(volume)
-        embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
+
+      
+    #- - -{ Now }- - -
+      
     @commands.command(name='now', aliases=['n'])
     async def _now(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
         if ctx.voice_state.current == None: return await self.create_error_embed(ctx, 'Nothing being played at the moment.')
         await ctx.send(embed=ctx.voice_state.current.create_embed())
 
+
+
+    #- - -{ Replay }- - -
+      
     @commands.command(name='replay', aliases=['rep'])
-    @commands.has_permissions(manage_guild=True)
     async def _replay(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
       
@@ -419,13 +436,12 @@ class Music(commands.Cog):
           
         if ctx.voice_state.is_playing and ctx.voice_state.voice.is_playing():
             await ctx.voice_state.replay()
-            
-            temptitle = '✅   Song replay startet'
-            embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
-            await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
-    
+
+
+
+    #- - -{ Pause }- - -
+          
     @commands.command(name='pause', aliases=['pa'])
-    @commands.has_permissions(manage_guild=True)
     async def _pause(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
     
@@ -436,13 +452,15 @@ class Music(commands.Cog):
         if ctx.voice_state.is_playing and ctx.voice_state.voice.is_playing():
             ctx.voice_state.voice.pause()
 
-            temptitle = '✅   Song stopped'
-            embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+            temptitle = '✅   Song paused'
+            embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
             await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
-            #--await ctx.message.add_reaction('⏯')
 
+
+
+    #- - -{ Resume }- - -
+          
     @commands.command(name='resume', aliases=['r'])
-    @commands.has_permissions(manage_guild=True)
     async def _resume(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
 
@@ -454,12 +472,14 @@ class Music(commands.Cog):
             ctx.voice_state.voice.resume()
 
             temptitle = '✅   Song resumed'
-            embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+            embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
             await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
-            #--await ctx.message.add_reaction('⏯')
 
+
+
+    #- - -{ Stop }- - -
+  
     @commands.command(name='stop', aliases=['st'])
-    @commands.has_permissions(manage_guild=True)
     async def _stop(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
           
@@ -468,15 +488,18 @@ class Music(commands.Cog):
         if ctx.author.voice.channel != ctx.voice_state.voice.channel: return await self.create_error_embed(ctx, "The bot is currently not in your voicechannel.")
           
         ctx.voice_state.songs.clear()
-
+        ctx.voice_state.loop = False
         if ctx.voice_state.is_playing:
             ctx.voice_state.voice.stop()
 
         temptitle = '✅   Stopped Music Bot'
-        embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
-            #--await ctx.message.add_reaction('⏹')
 
+
+        
+    #- - -{ Skip }- - -
+  
     @commands.command(name='skip', aliases=['s'])
     async def _skip(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
@@ -491,15 +514,17 @@ class Music(commands.Cog):
         ctx.voice_state.skip()
       
         temptitle = '✅   Song skipped'
-        embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
+
+    #- - -{ Queue }- - -
+  
     @commands.command(name='queue', aliases=['q'])
     async def _queue(self, ctx: commands.Context, *, page: int = 1):
         if allowedCommandChannel not in ctx.channel.name: return
-
-        if len(ctx.voice_state.songs) == 0:
-            await self.create_error_embed(ctx, 'The queue is empty.')
+        if ctx.voice_state.loop: return await self.create_error_embed(ctx, 'Loop has to be denabled for this command.')
+        if len(ctx.voice_state.songs) == 0: return await self.create_error_embed(ctx, 'The queue is empty.')
 
         items_per_page = 10
         pages = math.ceil(len(ctx.voice_state.songs) / items_per_page)
@@ -515,40 +540,82 @@ class Music(commands.Cog):
                  .set_footer(text='Viewing page {}/{}'.format(page, pages)))
         await ctx.send(embed=embed)
 
+
+        
+    #- - -{ Shuffle }- - -
+  
     @commands.command(name='shuffle', aliases=['sh'])
     async def _shuffle(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
-
+            
+        if ctx.voice_state.loop: return await self.create_error_embed(ctx, 'Loop has to be denabled for this command.')
         if ctx.author.voice == None: return await self.create_error_embed(ctx, "You have to be in a voicechannel.") 
         if ctx.voice_state.voice == None: return await self.create_error_embed(ctx, "The bot is currently not in a voicechannel.") 
         if ctx.author.voice.channel != ctx.voice_state.voice.channel: return await self.create_error_embed(ctx, "The bot is currently not in your voicechannel.")
         if len(ctx.voice_state.songs) == 0: await self.create_error_embed(ctx, 'The queue is empty.')
 
         ctx.voice_state.songs.shuffle()
-        await ctx.message.add_reaction('✅')
+        temptitle = '✅   Queue shuffled'
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
+
+
+    #- - -{ Remove }- - -
+  
     @commands.command(name='remove', aliases=['re'])
-    async def _remove(self, ctx: commands.Context, index: int):
+    async def _remove(self, ctx: commands.Context, index):
         if allowedCommandChannel not in ctx.channel.name: return
-
+            
+        if ctx.voice_state.loop: return await self.create_error_embed(ctx, 'Loop has to be denabled for this command.')
         if ctx.author.voice == None: return await self.create_error_embed(ctx, "You have to be in a voicechannel.")  
         if ctx.voice_state.voice == None: return await self.create_error_embed(ctx, "The bot is currently not in a voicechannel.") 
         if ctx.author.voice.channel != ctx.voice_state.voice.channel: return await self.create_error_embed(ctx, "The bot is currently not in your voicechannel.")
         if len(ctx.voice_state.songs) == 0: await self.create_error_embed(ctx, 'The queue is empty.')
+        removedSongTitle = ctx.voice_state.songs[int(index) - 1].source.title
+        ctx.voice_state.songs.remove(int(index) - 1)
+        temptitle = '✅   Song removed from queue: '
+        embed = discord.Embed( title = temptitle, description="➙ " + removedSongTitle, colour = discord.Colour.green())          
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
-        ctx.voice_state.songs.remove(index - 1)
-        await ctx.message.add_reaction('✅')
 
+      
+    #- - -{ Clear }- - -
+  
+    @commands.command(name='clear', aliases=['c'])
+    async def _clear(self, ctx: commands.Context):
+        if allowedCommandChannel not in ctx.channel.name: return
+            
+        if ctx.voice_state.loop: return await self.create_error_embed(ctx, 'Loop has to be denabled for this command.')
+        if ctx.author.voice == None: return await self.create_error_embed(ctx, "You have to be in a voicechannel.")  
+        if ctx.voice_state.voice == None: return await self.create_error_embed(ctx, "The bot is currently not in a voicechannel.") 
+        if ctx.author.voice.channel != ctx.voice_state.voice.channel: return await self.create_error_embed(ctx, "The bot is currently not in your voicechannel.")
+        if len(ctx.voice_state.songs) == 0: return await self.create_error_embed(ctx, 'The queue is already empty.')
+        ctx.voice_state.songs.clear()
+        temptitle = '✅   Queue cleared '
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
+
+
+      
+    #- - -{ Loop }- - -
+  
     @commands.command(name='loop', aliases=['lo'])
     async def _loop(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
-        return
-        if not ctx.voice_state.is_playing: await self.create_error_embed(ctx, 'Nothing being played at the moment.')
+          
+        if not ctx.voice_state.is_playing: return await self.create_error_embed(ctx, 'Nothing being played at the moment.')
 
-        # Inverse boolean value to loop and unloop.
         ctx.voice_state.loop = not ctx.voice_state.loop
-        #await ctx.message.add_reaction('✅')
+        temptitle = '✅   Current song unlooped'
+        if ctx.voice_state.loop: temptitle = '✅   Current song looped'
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.green())          
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
+
+        
+    #- - -{ Play }- - -
+  
     @commands.command(name='play', aliases=['p'])
     async def _play(self, ctx: commands.Context, *, search: str):
         if allowedCommandChannel not in ctx.channel.name: return
@@ -576,15 +643,26 @@ class Music(commands.Cog):
             if ctx.voice_client.channel != ctx.author.voice.channel:
                 raise commands.CommandError('Bot is already in a voice channel.')
 
+    #- - -{ Extra Functions }- - -
+  
     async def create_error_embed(self, ctx, descr):
         temptitle = '❌   Failed:  ```{}```'.format(descr)
-        embed = discord.Embed( title = temptitle, colour = discord.Colour.blue())          
+        embed = discord.Embed( title = temptitle, colour = discord.Colour.red())          
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
 
-bot = commands.Bot('m!', description='Yet another music bot.')
-bot.add_cog(Music(bot))
 
+
+                              #=====================================
+                              #- - - - -{ Bot & Webserver }- - - - -
+                              #=====================================
+
+
+
+
+bot = commands.Bot('m!', description='The Ultimate Music Bot by Möhrchen.')
+bot.add_cog(Music(bot))
+bot.remove_command('help')
 
 @bot.event
 async def on_ready():
@@ -602,5 +680,3 @@ async def on_command_error(ctx, error):
 
 keep_alive()
 bot.run(os.getenv("DISCORD_BOT_SECRET"))
-#token = os.environ.get("DISCORD_BOT_SECRET")
-#client.run(token)
