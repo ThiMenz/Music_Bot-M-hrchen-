@@ -257,7 +257,7 @@ class VoiceState:
             elif self.loop and not activereplay:
                 theSource = await YTDLSource.create_source(self._ctx, search=str(self.current.source.url), loop=False)
                 theSourceSong = Song(theSource)
-                self.current = await self.songs.get()
+                self.current = theSourceSong
                 activereplay = True
             else:
                 theSource = await YTDLSource.create_source(self._ctx, search=str(self.current.source.url), loop=False)
@@ -482,7 +482,7 @@ class Music(commands.Cog):
     @commands.command(name='stop', aliases=['st'])
     async def _stop(self, ctx: commands.Context):
         if allowedCommandChannel not in ctx.channel.name: return
-          
+        return
         if ctx.author.voice == None: return await self.create_error_embed(ctx, "You have to be in a voicechannel.") 
         if ctx.voice_state.voice == None: return await self.create_error_embed(ctx, "The bot is currently not in a voicechannel.") 
         if ctx.author.voice.channel != ctx.voice_state.voice.channel: return await self.create_error_embed(ctx, "The bot is currently not in your voicechannel.")
