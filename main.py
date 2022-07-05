@@ -13,6 +13,15 @@ from discord.ext import commands
 from discord.utils import get
 from discord.ext.commands import CommandNotFound
 
+
+
+
+                              #==========================================
+                              #- - - - -{ Vars, Options & Data }- - - - -
+                              #==========================================
+
+
+
 # Silence useless bug reports messages
 youtube_dl.utils.bug_reports_message = lambda: ''
 
@@ -76,6 +85,15 @@ class YTDLSource(discord.PCMVolumeTransformer):
     def __str__(self):
         return '**{0.title}** by **{0.uploader}**'.format(self)
 
+
+
+                              #================================================
+                              #- - - - -{ Create FFMPEG Audio Source }- - - - -
+                              #================================================
+
+
+
+  
     @classmethod
     async def create_source(cls, ctx: commands.Context, search: str, *, loop: asyncio.BaseEventLoop = None):
         loop = loop or asyncio.get_event_loop()
@@ -202,6 +220,13 @@ class SongQueue(asyncio.Queue):
 
 
 class VoiceState:
+
+
+                              #==================================
+                              #- - - - -{ Audio Player }- - - - -
+                              #==================================
+
+
   
     def __init__(self, bot: commands.Bot, ctx: commands.Context):
         self.bot = bot
