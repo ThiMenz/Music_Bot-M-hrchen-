@@ -46,12 +46,12 @@ m!playlistremove
 
 # ✧ How to setup
 
-- Fork the replit from: https://replit.com/@Moehrchen/MusicBot-Mohrchen \
-- Add a system enviroment variable named "DISCORD_BOT_SECRET" with the TOKEN of your bot application from: https://discord.com/developers/applications \
-- Run the bot on: https://replit.com \
+- Fork the replit from: https://replit.com/@Moehrchen/MusicBot-Mohrchen 
+- Add a system enviroment variable named "DISCORD_BOT_SECRET" with the TOKEN of your bot application from: https://discord.com/developers/applications 
+- Run the bot on: https://replit.com 
 - Copy the URL from the webserver and use it to create a HTTP-monitor on: https://uptimerobot.com
 
-\
+
 # ✧ Credits
 \
 Created by Möhrchen (Thilo) --> Meister Möhre #1623 \
