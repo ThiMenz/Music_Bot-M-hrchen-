@@ -1,12 +1,21 @@
+
+                              #=============================
+                              #- - - - -{ Imports }- - - - -
+                              #=============================
+
+
+
 import asyncio
 import functools
 import itertools
 import math
 import random
 import os
-
 import discord
 import youtube_dl
+import sys
+
+sys.path.append(os.path.abspath("Playlists/"))
 from keep_alive import keep_alive
 from async_timeout import timeout
 from discord.ext import commands
@@ -19,6 +28,7 @@ from discord.ext.commands import CommandNotFound
                               #==========================================
                               #- - - - -{ Vars, Options & Data }- - - - -
                               #==========================================
+
 
 
 
@@ -155,6 +165,15 @@ class YTDLSource(discord.PCMVolumeTransformer):
         return ' '.join(duration)
 
 
+
+
+                              #========================================
+                              #- - - - -{ Song & Queue Class }- - - - -
+                              #========================================
+
+
+
+
 class Song:
     __slots__ = ('source', 'requester')
 
@@ -273,7 +292,7 @@ class VoiceState:
             self.next.clear()
             if not self.loop and not activereplay:
                 try:
-                    async with timeout(30):  # 30 seconds
+                    async with timeout(30):  # 30 seconds Timeout
                         self.current = await self.songs.get()
                           
                 except asyncio.TimeoutError:
@@ -559,7 +578,7 @@ class Music(commands.Cog):
 
         queue = ''
         for i, song in enumerate(ctx.voice_state.songs[start:end], start=start):
-            queue += '`{0}.` [**{1.source.title}**]({1.source.url})\n'.format(i + 1, song)
+            queue += '`{0}.` [**{1.source.title}**]({1.source.url})\n-------------------------------------------------------------------------\n'.format(i + 1, song)
 
         embed = (discord.Embed(description='**{} tracks:**\n\n{}'.format(len(ctx.voice_state.songs), queue))
                  .set_footer(text='Viewing page {}/{}'.format(page, pages)))
@@ -658,6 +677,115 @@ class Music(commands.Cog):
                 await ctx.voice_state.songs.put(song)
                 await ctx.send('Enqueued {}'.format(str(source)))
 
+    #- - -{ Playlist }- - -
+
+    @commands.command(name='playlist', aliases=['pl'])
+    async def _playlist(self, ctx: commands.Context, *, playlistname: str):
+        if allowedCommandChannel not in ctx.channel.name: return
+        if ctx.author.voice == None: return await self.create_error_embed(ctx, "You have to be in a voicechannel.") 
+
+        try: playlistfile = open("Playlists/" + playlistname + ".txt", "r")
+        except: return await self.create_error_embed(ctx, 'This playlist does not exist.')
+        playlistlines = playlistfile.readlines()
+        playlistfile.close()
+      
+        async with ctx.typing():
+            for ln in playlistlines:
+                if "Owner>>>" in ln:
+                    if not ctx.voice_state.voice: await ctx.invoke(self._join)
+                else:
+                    try:
+                        source = await YTDLSource.create_source(ctx, ln.split('~')[0], loop=False)
+                    except YTDLError as e:
+                        await self.create_error_embed(ctx, str(e))
+                    else:
+                        song = Song(source)
+        
+                        await ctx.voice_state.songs.put(song)
+                        await ctx.send('Enqueued {}'.format(str(source)))
+
+
+
+                      
+    #- - -{ Playlist Add }- - -
+                      
+    @commands.command(name='playlistadd', aliases=['pla'])
+    async def _playlistadd(self, ctx: commands.Context, *, params: str):
+        if allowedCommandChannel not in ctx.channel.name: return
+
+        splittedParams = params.split(" ")
+        search = params.replace(splittedParams[0] + " ", "")
+        playlistpath = "Playlists/" + splittedParams[0] + ".txt"
+      
+        if not os.path.exists(playlistpath): return await self.create_error_embed(ctx, 'This playlist does not exist.')
+
+        with open(playlistpath) as f:
+            hasPerms = (str(ctx.author.id) in f.readline())
+            f.close()
+            if not hasPerms: return await self.create_error_embed(ctx, 'You do not have permissions to modify this playlist.')
+        
+        source = await YTDLSource.create_source(ctx, search, loop=False)
+      
+        with open(playlistpath, "a") as f:  
+            f.write("\n" + str(source.url) + "~" + str(source.title)) 
+            f.close()
+        temptitle = '✅   Successfully added to your playlist '
+        embed = discord.Embed( title = temptitle, description=source.title , colour = discord.Colour.green())   
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
+
+    #- - -{ Show Playlist }- - -
+                      
+    @commands.command(name='showplaylist', aliases=['spl'])
+    async def _showplaylist(self, ctx: commands.Context, *, playlistname: str):
+        if allowedCommandChannel not in ctx.channel.name: return
+
+        paramSplits = playlistname.split(" ")
+        playlist = paramSplits[0]
+        
+        playlistpath = "Playlists/" + playlist + ".txt"
+      
+        if not os.path.exists(playlistpath): return await self.create_error_embed(ctx, 'This playlist does not exist.')
+
+        f = open(playlistpath, "r")
+        frl = f.readlines()
+        f.close()
+        embed = discord.Embed( title = "➙ " + playlist + " (Playlist)", colour = discord.Colour.blue())
+        a = 0
+        offset = 0
+        if len(paramSplits) > 1: offset = int(paramSplits[1]) - 1
+          
+        if len(frl) < offset + 2: return await self.create_error_embed(ctx, 'The playlist do not have ' + str(offset + 1) + ' titles.')
+          
+        for ln in frl:
+            if a > offset and a < offset + 25: embed.add_field(name="```"+ str(a) +".``` " + ln.split("~")[1], value="-------------------------------------------------------------------------", inline=False)
+            a += 1 
+
+      
+        try: await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
+        except Exception as e: return await self.create_error_embed(ctx, 'Your playlist is too long. ' + str(e))
+
+
+          
+    #- - -{ Create Playlist }- - -
+                      
+    @commands.command(name='createplaylist', aliases=['cpl'])
+    async def _createplaylist(self, ctx: commands.Context, *, playlistname: str):
+        if allowedCommandChannel not in ctx.channel.name: return
+
+        playlistpath = "Playlists/" + playlistname.replace(" ", "_") + ".txt"
+      
+        if os.path.exists(playlistpath): return await self.create_error_embed(ctx, 'This playlist already exist.')
+
+        with open(playlistpath, 'w') as f:
+            f.write('Owner>>>' + str(ctx.author.id))
+            f.close()
+
+        temptitle = '✅   Successfully created playlist '
+        embed = discord.Embed( title = temptitle, description=playlistname.replace(" ", "_") , colour = discord.Colour.green())   
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
+
+
+      
     @_join.before_invoke
     @_play.before_invoke
     async def ensure_voice_state(self, ctx: commands.Context):
