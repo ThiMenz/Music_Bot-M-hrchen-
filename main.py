@@ -803,6 +803,8 @@ class Music(commands.Cog):
         a = 0
         offset = 0
         if len(paramSplits) > 1: offset = int(paramSplits[1]) - 1
+
+        if len(frl) == 1: return await self.create_error_embed(ctx, 'The playlist do not have any titles.')
           
         if len(frl) < offset + 2: return await self.create_error_embed(ctx, 'The playlist do not have ' + str(offset + 1) + ' titles.')
           
