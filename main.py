@@ -677,7 +677,7 @@ class Music(commands.Cog):
                 await ctx.voice_state.songs.put(song)
                 await ctx.send('Enqueued {}'.format(str(source)))
 
-    #- - -{ Playlist }- - -
+    #- - -{ Play Playlist }- - -
 
     @commands.command(name='playlist', aliases=['pl'])
     async def _playlist(self, ctx: commands.Context, *, playlistname: str):
@@ -733,6 +733,43 @@ class Music(commands.Cog):
         embed = discord.Embed( title = temptitle, description=source.title , colour = discord.Colour.green())   
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
+
+
+    
+    #- - -{ Playlist Remove }- - -
+                      
+    @commands.command(name='playlistremove', aliases=['plr'])
+    async def _playlistremove(self, ctx: commands.Context, *, params: str):
+        if allowedCommandChannel not in ctx.channel.name: return
+
+        splittedParams = params.split(" ")
+
+        if len(splittedParams) == 1: return await self.create_error_embed(ctx, 'You have to enter the playlist and the number from the song.')
+        try: intedindex = int(splittedParams[1])
+        except: return await self.create_error_embed(ctx, 'You have to enter the number from the song, <' + splittedParams[1] + '> is not a valid number.')
+      
+        playlistpath = "Playlists/" + splittedParams[0] + ".txt"
+      
+        if not os.path.exists(playlistpath): return await self.create_error_embed(ctx, 'This playlist does not exist.')
+        with open(playlistpath, "r") as f:
+            lines = f.readlines()
+            f.close()
+            if not str(ctx.author.id) in lines[0]: return await self.create_error_embed(ctx, 'You do not have permissions to modify this playlist.')
+
+        if len(lines) - 1 < intedindex or intedindex == 0: return await self.create_error_embed(ctx, 'There is not a song with this index in this playlist.')
+
+        theRemovedLine = ""
+        with open(playlistpath, "w") as f:
+            a = 0
+            for line in lines:
+                if not a == intedindex: f.write(line)
+                else: theRemovedLine = line
+                a += 1
+
+        temptitle = '✅   Successfully removed from your playlist '
+        embed = discord.Embed( title = temptitle, description="[" + theRemovedLine.split("~")[1] + "](" + theRemovedLine.split("~")[0] + ")" , colour = discord.Colour.green())   
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
+
     #- - -{ Show Playlist }- - -
                       
     @commands.command(name='showplaylist', aliases=['spl'])
@@ -781,6 +818,25 @@ class Music(commands.Cog):
             f.close()
 
         temptitle = '✅   Successfully created playlist '
+        embed = discord.Embed( title = temptitle, description=playlistname.replace(" ", "_") , colour = discord.Colour.green())   
+        await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
+
+    #- - -{ Delete Playlist }- - -
+                      
+    @commands.command(name='deleteplaylist', aliases=['dpl'])
+    async def _deleteplaylist(self, ctx: commands.Context, *, playlistname: str):
+        if allowedCommandChannel not in ctx.channel.name: return
+
+        playlistpath = "Playlists/" + playlistname.replace(" ", "_") + ".txt"
+      
+        if not os.path.exists(playlistpath): return await self.create_error_embed(ctx, 'This playlist does not exist.')
+        with open(playlistpath) as f:
+            hasPerms = (str(ctx.author.id) in f.readline())
+            f.close()
+            if not hasPerms: return await self.create_error_embed(ctx, 'You do not have permissions to modify this playlist.')
+        os.remove(playlistpath)
+
+        temptitle = '✅   Successfully deleted playlist '
         embed = discord.Embed( title = temptitle, description=playlistname.replace(" ", "_") , colour = discord.Colour.green())   
         await ctx.send(content="<@" + str(ctx.message.author.id) + ">", embed=embed)
 
